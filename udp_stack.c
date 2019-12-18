@@ -25,6 +25,11 @@
 
 #define ETH_MAC_LENGTH		6
 
+
+#define NETWORK_NAME 		"netmap:ens37"
+#define HOST_IP			"192.168.42.189"
+#define HOST_MAC		"00:0c:29:b7:e6:a3"
+
 struct ethhdr {
 
 	unsigned char h_dest[ETH_MAC_LENGTH];
@@ -156,7 +161,7 @@ void echo_arp_pkt(struct arppkt *arp, struct arppkt *arp_rt, char *hmac) {
 
 int main() {
 
-	struct nm_desc *nmr = nm_open("netmap:eth0", NULL, 0, NULL);
+	struct nm_desc *nmr = nm_open(NETWORK_NAME, NULL, 0, NULL);
 	if (nmr == NULL) {
 		return -1;
 	}
@@ -198,9 +203,9 @@ int main() {
 				struct arppkt *arp = (struct arppkt*)stream;
 				struct arppkt arp_rt;
 
-				if (arp->arp.dip == inet_addr("192.168.2.217")) {
+				if (arp->arp.dip == inet_addr(HOST_IP)) {
 
-					echo_arp_pkt(arp, &arp_rt, "00:50:56:33:1c:ca");
+					echo_arp_pkt(arp, &arp_rt, HOST_MAC);
 					nm_inject(nmr, &arp_rt, sizeof(struct arppkt));
 					
 				}
