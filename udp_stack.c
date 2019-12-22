@@ -16,19 +16,17 @@
 #define PROTO_IP		0x0800
 #define PROTO_ARP		0x0806
 
-
 #define PROTO_UDP		17
-
-
+#define PROTO_ICMP		1
 
 #pragma pack(1)
 
 #define ETH_MAC_LENGTH		6
 
 
-#define NETWORK_NAME 		"netmap:ens37"
-#define HOST_IP			"192.168.42.189"
-#define HOST_MAC		"00:0c:29:b7:e6:a3"
+#define NETWORK_NAME 	"netmap:ens33"
+#define HOST_IP			"192.168.6.132"
+#define HOST_MAC		"00:0c:29:fd:ad:be"
 
 struct ethhdr {
 
@@ -100,6 +98,91 @@ struct arppkt {
 };
 
 
+/*struct icmphdr {
+
+	unsigned char type;
+	unsigned char code;
+	unsigned short check;
+	
+};
+
+struct icmpecho {
+
+	unsigned short id;
+	unsigned short seq;
+	unsigned char data[32];
+	
+};
+
+struct icmppkt {
+
+	struct ethhdr eh;
+	struct iphdr ip;
+	struct icmphdr icmp;
+	union {
+
+		struct icmpecho echo;
+
+	};
+	
+};*/
+
+struct icmphdr {
+	unsigned char type;
+	unsigned char code;
+	unsigned short check;
+	unsigned short identifier;
+	unsigned short seq;
+	unsigned char data[0];
+};
+
+struct icmppkt {
+	struct ethhdr eh;
+	struct iphdr ip;
+	struct icmphdr icmp;
+};
+
+unsigned short ip_cksum(unsigned short* buffer, int size)
+{
+	unsigned long cksum = 0;
+	while(size>1)
+	{
+		cksum += *buffer++;
+		size -= sizeof(unsigned short);
+	}
+	if(size)
+	{
+		cksum += *(unsigned char*)buffer;
+	}
+	cksum = (cksum>>16) + (cksum&0xffff); 
+	cksum += (cksum>>16); 
+	return (unsigned short)(~cksum);
+}
+
+unsigned short in_cksum(unsigned short *addr, int len) {
+
+	register int nleft = len;
+	register unsigned short *w = addr;
+	register int sum = 0;
+	unsigned short answer = 0;
+
+	while (nleft > 1)  {
+		sum += *w++;
+		nleft -= 2;
+	}
+
+	if (nleft == 1) {
+		*(u_char *)(&answer) = *(u_char *)w ;
+		sum += answer;
+	}
+
+	sum = (sum >> 16) + (sum & 0xffff);	
+	sum += (sum >> 16);			
+	answer = ~sum;
+	
+	return (answer);
+
+}
 
 int str2mac(char *mac, char *str) {
 
@@ -157,6 +240,46 @@ void echo_arp_pkt(struct arppkt *arp, struct arppkt *arp_rt, char *hmac) {
 
 }
 
+/*void echo_icmp_pkt(struct icmppkt *icmp, struct icmppkt *icmp_rt)
+{
+	printf("echo_icmp_pkt step into !!!\n");
+	memcpy(icmp_rt, icmp, sizeof(struct icmppkt));
+	icmp_rt->icmp.code = 0;
+	icmp_rt->icmp.type = 0;
+	icmp_rt->icmp.check = 0;
+	memcpy(icmp_rt->eh.h_dest, icmp->eh.h_source, ETH_MAC_LENGTH);
+	memcpy(icmp_rt->eh.h_source, icmp->eh.h_dest, ETH_MAC_LENGTH);
+
+	icmp_rt->ip.daddr = icmp->ip.saddr;
+	icmp_rt->ip.saddr = icmp->ip.daddr;
+	
+	icmp_rt->icmp.check = htons(in_cksum((unsigned short *)icmp_rt, sizeof(struct icmppkt)));
+	//icmp_rt->ip.check = htons(in_cksum((unsigned short *)&icmp_rt->ip, sizeof(struct iphdr)));
+}*/
+
+void nty_icmp_pkt(struct icmppkt *icmp, struct icmppkt *icmp_rt, int icmp_len) 
+{
+	printf("step into nty_icmp_pkt !!!\n");
+	
+	memcpy(icmp_rt, icmp, icmp_len);
+
+	printf("step into nty_icmp_pkt  2  !!!\n");
+
+	icmp_rt->icmp.type = 0x0; //
+	icmp_rt->icmp.code = 0x0; //
+	icmp_rt->icmp.check = 0x0;
+
+	icmp_rt->ip.saddr = icmp->ip.daddr;
+	icmp_rt->ip.daddr = icmp->ip.saddr;
+
+	memcpy(icmp_rt->eh.h_dest, icmp->eh.h_source, ETH_MAC_LENGTH);
+	memcpy(icmp_rt->eh.h_source, icmp->eh.h_dest, ETH_MAC_LENGTH);
+
+	icmp_rt->icmp.check = in_cksum((unsigned short *)&icmp_rt->icmp, icmp_len);
+	//icmp_rt->ip.length = htons(icmp_len + sizeof(struct iphdr));
+	//icmp_rt->ip.check = 0;
+	//icmp_rt->ip.check = htons(ip_cksum((unsigned short *)&icmp_rt->ip, sizeof(struct iphdr)));
+}
 
 
 int main() {
@@ -185,6 +308,22 @@ int main() {
 
 			printf("proto: %x\n", ntohs(eh->h_proto));
 			if (ntohs(eh->h_proto) == PROTO_IP) {
+
+				struct icmppkt *icmp = (struct icmppkt *)stream;
+				if (icmp->ip.proto == PROTO_ICMP) {
+
+					if (icmp->icmp.type == 8 &&  icmp->icmp.code == 0) {
+
+						int icmp_len = icmp->ip.length - sizeof(struct iphdr);
+						struct icmppkt *icmp_rt = (struct icmppkt *) malloc(icmp_len);
+						memset(icmp_rt, 0, icmp_len);
+						nty_icmp_pkt(icmp, icmp_rt, icmp_len);
+						nm_inject(nmr, icmp_rt, icmp_len);
+						free(icmp_rt);
+						continue;
+					}
+
+				}
 
 				struct udppkt *udp = (struct udppkt *)stream;
 				
