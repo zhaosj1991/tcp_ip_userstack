@@ -213,10 +213,10 @@ void echo_arp_pkt(struct arppkt *arp, struct arppkt *arp_rt, char *hmac) {
 
 }
 
-void echo_icmp_pkt(struct icmppkt *icmp, struct icmppkt *icmp_rt, int icmp_len)
+void echo_icmp_pkt(struct icmppkt *icmp, struct icmppkt *icmp_rt, int icmppkt_len)
 {
 	printf("echo_icmp_pkt step into !!!\n");
-	memcpy(icmp_rt, icmp, icmp_len);
+	memcpy(icmp_rt, icmp, icmppkt_len);
 	icmp_rt->icmp.code = 0;
 	icmp_rt->icmp.type = 0;
 	icmp_rt->icmp.check = 0;
@@ -225,11 +225,8 @@ void echo_icmp_pkt(struct icmppkt *icmp, struct icmppkt *icmp_rt, int icmp_len)
 
 	icmp_rt->ip.daddr = icmp->ip.saddr;
 	icmp_rt->ip.saddr = icmp->ip.daddr;
-	icmp_rt->ip.length = htons(icmp_len + sizeof(struct iphdr));
-	printf("icmp ip size = %d\n", icmp_len + sizeof(struct iphdr));
-		
-	icmp_rt->icmp.check = htons(in_cksum((unsigned short *)icmp_rt, icmp_len));
-	//icmp_rt->ip.check = htons(in_cksum((unsigned short *)&icmp_rt->ip, sizeof(struct iphdr)));
+//	icmp_rt->ip.length = htons(icmppkt_len + sizeof(struct ethhdr));
+	icmp_rt->icmp.check = in_cksum((unsigned short *)&icmp_rt->icmp, icmppkt_len - sizeof(struct ethhdr) - sizeof(struct iphdr));
 }
 
 int main() {
@@ -264,11 +261,10 @@ int main() {
 
 					if (icmp->icmp.type == 8 &&  icmp->icmp.code == 0) {
 						
-						int icmp_len = ntohs(icmp->ip.length) - sizeof(struct iphdr);
-						printf("icmp data size = %d\n", icmp_len - sizeof(struct icmphdr));
-						struct icmppkt *icmp_rt = (struct icmppkt *) calloc(1, icmp_len);
-						echo_icmp_pkt(icmp, icmp_rt, icmp_len);
-						nm_inject(nmr, icmp_rt, icmp_len);
+						int icmppkt_len = ntohs(icmp->ip.length) + sizeof(struct ethhdr);
+						struct icmppkt *icmp_rt = (struct icmppkt *) calloc(1, icmppkt_len);
+						echo_icmp_pkt(icmp, icmp_rt, icmppkt_len);
+						nm_inject(nmr, icmp_rt, icmppkt_len);
 						free(icmp_rt);
 						continue;
 						
